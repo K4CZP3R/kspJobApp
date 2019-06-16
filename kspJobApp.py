@@ -232,7 +232,8 @@ class KspJobApp_data:
 class KspJobApp:
     def __init__(self):
         self.debug = kspDebug.kspDebug("main")
-    def kspConfigureSession(self, session):
+    
+    def kspConfigureSession(self, session, add_defaultheaders=False, add_languageheader=False):
         self.debug.out("Preparing session to be used in JobApp env")
         self.debug.out("Popping unused headers")
         for header in KspJobApp_data.headersToPop:
@@ -242,35 +243,34 @@ class KspJobApp:
         for header in KspJobApp_data.headersToAdd:
             self.debug.out("[!] Added '{}'".format(header))
             session.addHeader(header)
+        
+        if add_defaultheaders:
+            self.debug.out("Adding secure header...")
+            token_type = KspConfig().readValue("token_type")
+            access_token = KspConfig().readValue("access_token")
+            session.addHeader({"Authorization": "{} {}".format(token_type, access_token)})
+            self.debug.out("Adding xdeviceinformation header...")
+            session.addHeader({"x-DeviceInformation": DecompiledApp.DeviceInfoService().RetrieveDeviceInfo()})
+        if add_languageheader:
+            self.debug.out("Adding language header")
+            session.addHeader({"Accept-Language": "en-US"})
         return session
+    
     def kspSchedule_getPeriod(self, year, week):
         config_dict = KspConfig().readConfig()
 
-        api_session = self.kspConfigureSession(KspHttp.Session())
+        api_session = self.kspConfigureSession(KspHttp.Session(),add_defaultheaders=True, add_languageheader=True)
         publicationUrl = config_dict['publicationUrl']
-        access_token = config_dict['access_token']
-        token_type = config_dict['token_type']
         shopId = config_dict['shopId']
         employeeId = config_dict['employeeId']
         
-        self.debug.out("Adding secure/default headers")
-        api_session.bulkAddHeaders([
-            {"Authorization": "{} {}".format(token_type, access_token)},
-            {"x-DeviceInformation": DecompiledApp.DeviceInfoService().RetrieveDeviceInfo()},
-            {"Accept-Language": "en-US"}
-        ])
-        
         self.debug.out("Getting schedule for year:{}|week:{}".format(year, week))
-        api_session.setUrl("{}/schedule/employees/{}/{}/{}/True".format(
-            publicationUrl,employeeId, year, week
-        ))
+        api_session.setUrl("{l[publicationUrl]}/schedule/employees/{l[employeeId]}/{l[year]}/{l[week]}/True".format(l=locals()))
 
         resp_1 = api_session.GET()
 
         self.debug.out("Getting replacements for year:{}|week:{}".format(year, week))
-        api_session.setUrl("{}/replacement/{}/{}/{}/{}".format(
-            publicationUrl, shopId, employeeId, year, week
-        ))
+        api_session.setUrl("{l[publicationUrl]}/replacement/{l[shopId]}/{l[employeeId]}/{l[year]}/{l[week]}".format(l=locals()))
 
         resp_2 = api_session.GET()
 
@@ -278,41 +278,53 @@ class KspJobApp:
             'schedule': resp_1.json(),
             'replacement': resp_2.json()
         }
-
-        
-
-
     def kspSchedule_getPeriods(self):
         config_dict = KspConfig().readConfig()
 
-        api_session = self.kspConfigureSession(KspHttp.Session())
+        api_session = self.kspConfigureSession(KspHttp.Session(), add_defaultheaders=True, add_languageheader=True)
         publicationUrl = config_dict['publicationUrl']
-        access_token = config_dict['access_token']
-        token_type = config_dict['token_type']
         shopId = config_dict['shopId']
         employeeId = config_dict['employeeId']
 
         self.debug.out("Getting av. schedules")
-        api_session.setUrl("{}/schedule/shops/{}/employees/{}".format(
-            publicationUrl, shopId, employeeId
-        ))
+        api_session.setUrl("{l[publicationUrl]}/schedule/shops/{l[shopId]}/employees/{l[employeeId]}".format(l=locals()))
 
-        self.debug.out("Adding secure/default headers")
-        api_session.bulkAddHeaders([
-            {"Authorization": "{} {}".format(token_type, access_token)},
-            {"x-DeviceInformation": DecompiledApp.DeviceInfoService().RetrieveDeviceInfo()},
-            {"Accept-Language": "en-US"}
-        ])
         self.debug.out("GET!")
         resp_1 = api_session.GET()
         return resp_1.json()
 
+    def kspWorkedHours_getPeriods(self):
+        config_dict = KspConfig().readConfig()
 
+        api_session = self.kspConfigureSession(KspHttp.Session(), add_defaultheaders=True, add_languageheader=True)
+        publicationUrl = config_dict['publicationUrl']
+        shopId = config_dict['shopId']
+        employeeId = config_dict['employeeId']
+
+        self.debug.out("Getting av. worked hours")
+        api_session.setUrl("{l[publicationUrl]}/workedhours/shops/{l[shopId]}/employees/{l[employeeId]}".format(l=locals()))
+
+        self.debug.out("GET!")
+        resp_1 = api_session.GET()
+        return resp_1.json()
+    def kspWorkedHours_getPeriod(self, year, week):
+        config_dict = KspConfig().readConfig()
+
+        api_session = self.kspConfigureSession(KspHttp.Session(), add_defaultheaders=True, add_languageheader=True)
+        publicationUrl = config_dict['publicationUrl']
+        employeeId = config_dict['employeeId']
+
+        self.debug.out("Getting worked hours for year:{l[year]}|week:{l[week]}".format(l=locals()))
+        api_session.setUrl("{l[publicationUrl]}/workedhours/employees/{l[employeeId]}/{l[year]}/{l[week]}".format(l=locals()))
+
+        self.debug.out("GET!")
+        resp_1 = api_session.GET()
+        return resp_1.json()
     def kspOpenApp(self):
         config_dict = KspConfig().readConfig()
 
         self.debug.out("Initializing a new Http session")
-        api_session = self.kspConfigureSession(KspHttp.Session())
+        api_session = self.kspConfigureSession(KspHttp.Session(), add_defaultheaders=True)
 
         token_type = config_dict['token_type']
         access_token = config_dict['access_token']
@@ -321,15 +333,8 @@ class KspJobApp:
         
         #reportAppVersion
         self.debug.out("Reporting app version to server!")
-        api_session.setUrl("{}/user/{}/v2/version".format(
-            publicationUrl, employeeId
-        ))
+        api_session.setUrl("{l[publicationUrl]}/user/{l[employeeId]}/v2/version".format(l=locals()))
 
-        self.debug.out("Adding secure/default headers")
-        api_session.bulkAddHeaders([
-            {"Authorization": "{} {}".format(token_type, access_token)},
-            {"x-DeviceInformation": DecompiledApp.DeviceInfoService().RetrieveDeviceInfo()},
-        ])
         api_session.setData(DecompiledApp.DeviceInfoService().RetrieveDeviceInfo())
 
         self.debug.out("Making POST request")
@@ -341,9 +346,7 @@ class KspJobApp:
 
         #isFeatureApplicable
         self.debug.out("Checking if feature is applicable! (dummy)")
-        api_session.setUrl("{}/is-feature-applicable/Freizeit/".format(
-            publicationUrl
-        )) 
+        api_session.setUrl("{l[publicationUrl]}/is-feature-applicable/Freizeit/".format(l=locals())) 
         #self.debug.out("resp: '{}'".format(api_session.GET().text))
 
         #accessTokenRenew
@@ -354,9 +357,7 @@ class KspJobApp:
 
         #connectAuthorize
         self.debug.out("Authorizing session")
-        api_session.setUrl("{}/AuthServer/connect/authorize".format(
-            publicationUrl
-        ))
+        api_session.setUrl("{l[publicationUrl]}/AuthServer/connect/authorize".format(l=locals()))
 
         resp = api_session.GET()
         #self.debug.out("resp: '{}'".format(resp.json()))
@@ -408,12 +409,3 @@ class KspJobApp:
         self.debug.out("Deriving info from access_token")
         DecompiledApp.AccessTokenPayload(auth_info['access_token'])
         self.debug.out("Done!")
-
-KspJobApp().kspOpenApp()
-periods = KspJobApp().kspSchedule_getPeriods()
-
-current_period = periods['CurrentPeriod']
-
-current_period = KspJobApp().kspSchedule_getPeriod(current_period['Year'], current_period['WeekNumber'])
-
-print(json.dumps(current_period, indent=4, sort_keys=True))
